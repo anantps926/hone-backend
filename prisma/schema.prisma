@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────
+
+enum GoalLevel {
+  FUN
+  GOOD_ENOUGH
+  COMPETITIVE
+}
+
+enum TechniqueStatus {
+  LOCKED
+  ACTIVE
+  MASTERED
+  SKIPPED
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+// ─── Models ──────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  clerkId       String    @unique
+  email         String    @unique
+  name          String?
+  streak        Int       @default(0)
+  xp            Int       @default(0)
+  lastActiveAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  hobbies       Hobby[]
+  notes         Note[]
+  progress      TechniqueProgress[]
+
+  @@index([clerkId])
+}
+
+model Hobby {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  emoji       String
+  slug        String
+  goalLevel   GoalLevel
+  colorTheme  String     @default("purple")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  techniques  Technique[]
+
+  @@unique([userId, slug])
+  @@index([userId])
+}
+
+model Technique {
+  id              String           @id @default(cuid())
+  hobbyId         String
+  hobby           Hobby            @relation(fields: [hobbyId], references: [id], onDelete: Cascade)
+  name            String
+  slug            String
+  section         String
+  orderIndex      Int
+  difficulty      Difficulty
+  depthLevel      String        @default("solid") // "surface" | "solid" | "deep"
+  estimatedHours  Int
+  whyItMatters    String
+
+  contentJson     Json?
+  contentGeneratedAt DateTime?
+
+  videoJson       Json?
+  videoFetchedAt  DateTime?
+
+  audioLectureUrl  String?
+  audioPodcastUrl  String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  progress    TechniqueProgress[]
+  notes       Note[]
+
+  @@unique([hobbyId, slug])
+  @@index([hobbyId])
+  @@index([hobbyId, orderIndex])
+}
+
+model TechniqueProgress {
+  id            String    @id @default(cuid())
+  techniqueId   String
+  technique     Technique @relation(fields: [techniqueId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  read          Int       @default(0)
+  watch         Int       @default(0)
+  listen        Int       @default(0)
+  practice      Int       @default(0)
+  quiz          Int       @default(0)
+
+  mastery       Int       @default(0)
+  status        TechniqueStatus @default(LOCKED)
+
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([techniqueId, userId])
+  @@index([userId])
+  @@index([techniqueId])
+}
+
+model Note {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  techniqueId   String
+  technique     Technique @relation(fields: [techniqueId], references: [id], onDelete: Cascade)
+  body          String
+  tags          String[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([techniqueId])
+}
+
+// ─── Cache / Analytics ───────────────────────────────────
+
+model PlanRequest {
+  id          String    @id @default(cuid())
+  userId      String
+  hobbySlug   String
+  goalLevel   GoalLevel
+  rawInput    String
+  createdAt   DateTime  @default(now())
+
+  @@index([hobbySlug, goalLevel])
+}
