@@ -152,9 +152,23 @@ async function triggerBackgroundContentGeneration(
 
   const queue = new PQueue({ concurrency: 3 })
   for (const t of techniques) {
-    queue.add(() => generateAndCacheContent(
-      t.id, hobbyName, t.name, t.whyItMatters, t.depthLevel as DepthLevel
-    ))
+    queue.add(async () => {
+      try {
+        await generateAndCacheContent(
+          t.id,
+          hobbyName,
+          t.name,
+          t.whyItMatters,
+          t.depthLevel as DepthLevel,
+        )
+      } catch (err) {
+        // Swallow: e.g. Groq 429 TPM — user can retry later; must not leave an unhandled rejection.
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error(
+          `[background content] technique ${t.id} (${t.name}): ${msg}`,
+        )
+      }
+    })
   }
   await queue.onIdle()
 }
