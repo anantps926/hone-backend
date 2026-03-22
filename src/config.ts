@@ -8,7 +8,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
   // LLM provider selection
-  LLM_PROVIDER: z.enum(['anthropic', 'gemini']).default('anthropic'),
+  LLM_PROVIDER: z.enum(['anthropic', 'gemini', 'grok', 'groq']).default('anthropic'),
   // Anthropic
   ANTHROPIC_API_KEY: z.string().optional(),
   // Gemini
@@ -16,6 +16,20 @@ const envSchema = z.object({
   GEMINI_PLAN_MODEL: z.string().default('gemini-1.5-pro-latest'),
   GEMINI_CONTENT_MODEL: z.string().default('gemini-1.5-pro-latest'),
   GEMINI_ASK_MODEL: z.string().default('gemini-1.5-flash-latest'),
+  // Grok / xAI (OpenAI-compatible Chat Completions at api.x.ai)
+  /** Prefer official name; falls back to GROK_API_KEY in code if unset */
+  XAI_API_KEY: z.string().optional(),
+  GROK_API_KEY: z.string().optional(),
+  GROK_API_BASE: z.string().default('https://api.x.ai/v1'),
+  GROK_PLAN_MODEL: z.string().default('grok-3-latest'),
+  GROK_CONTENT_MODEL: z.string().default('grok-3-latest'),
+  GROK_ASK_MODEL: z.string().default('grok-3-latest'),
+  // Groq (OpenAI-compatible Chat Completions at api.groq.com)
+  GROQ_API_KEY: z.string().optional(),
+  GROQ_API_BASE: z.string().default('https://api.groq.com/openai/v1'),
+  GROQ_PLAN_MODEL: z.string().default('llama-3.3-70b-versatile'),
+  GROQ_CONTENT_MODEL: z.string().default('llama-3.3-70b-versatile'),
+  GROQ_ASK_MODEL: z.string().default('llama-3.1-8b-instant'),
   YOUTUBE_API_KEY: z.string().min(1),
   // When skipping Clerk (local dev), these may be blank.
   CLERK_SECRET_KEY: z.string().min(1).optional().default(''),
@@ -34,16 +48,32 @@ const envSchema = z.object({
 }).superRefine((val, ctx) => {
   if (val.LLM_PROVIDER === 'anthropic' && (!val.ANTHROPIC_API_KEY || val.ANTHROPIC_API_KEY.trim().length === 0)) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       path: ['ANTHROPIC_API_KEY'],
       message: 'ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic',
     })
   }
   if (val.LLM_PROVIDER === 'gemini' && (!val.GEMINI_API_KEY || val.GEMINI_API_KEY.trim().length === 0)) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       path: ['GEMINI_API_KEY'],
       message: 'GEMINI_API_KEY is required when LLM_PROVIDER=gemini',
+    })
+  }
+  const xaiKey =
+    (val.XAI_API_KEY && val.XAI_API_KEY.trim()) || (val.GROK_API_KEY && val.GROK_API_KEY.trim()) || ''
+  if (val.LLM_PROVIDER === 'grok' && xaiKey.length === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['XAI_API_KEY'],
+      message: 'XAI_API_KEY or GROK_API_KEY is required when LLM_PROVIDER=grok',
+    })
+  }
+  if (val.LLM_PROVIDER === 'groq' && (!val.GROQ_API_KEY || val.GROQ_API_KEY.trim().length === 0)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['GROQ_API_KEY'],
+      message: 'GROQ_API_KEY is required when LLM_PROVIDER=groq',
     })
   }
 })

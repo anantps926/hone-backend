@@ -109,6 +109,121 @@ async function geminiGenerateChatText(args: {
   return geminiGenerateText({ model: args.model, prompt, maxTokens: args.maxTokens })
 }
 
+function xaiApiKey(): string {
+  return (config.XAI_API_KEY || config.GROK_API_KEY || '').trim()
+}
+
+type OpenAiStyleMessage = { role: 'system' | 'user' | 'assistant'; content: string }
+
+/**
+ * OpenAI-compatible POST .../chat/completions (used by xAI Grok, Groq, etc.).
+ */
+async function openAiCompatibleChatCompletion(args: {
+  baseUrl: string
+  apiKey: string
+  providerLabel: string
+  model: string
+  messages: OpenAiStyleMessage[]
+  maxTokens: number
+  /** Prefer JSON for plan / content / explain pipelines */
+  responseJsonObject?: boolean
+}): Promise<string> {
+  const base = args.baseUrl.replace(/\/$/, '')
+  const url = `${base}/chat/completions`
+
+  const body: Record<string, unknown> = {
+    model: args.model,
+    messages: args.messages,
+    max_tokens: args.maxTokens,
+    temperature: 0.2,
+    stream: false,
+  }
+  if (args.responseJsonObject) {
+    body.response_format = { type: 'json_object' }
+  }
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${args.apiKey}`,
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '')
+    throw new Error(`${args.providerLabel} request failed: ${resp.status} ${text}`)
+  }
+
+  const json = (await resp.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>
+    error?: { message?: string }
+  }
+
+  if (json.error?.message) {
+    throw new Error(`${args.providerLabel} API error: ${json.error.message}`)
+  }
+
+  const content = json.choices?.[0]?.message?.content
+  if (typeof content !== 'string' || content.trim().length === 0) {
+    throw new Error(`${args.providerLabel} returned empty content`)
+  }
+  return content
+}
+
+/**
+ * xAI Grok via OpenAI-compatible POST /v1/chat/completions.
+ * @see https://docs.x.ai/docs/guides/chat-completions
+ */
+async function grokChatCompletion(args: {
+  model: string
+  messages: OpenAiStyleMessage[]
+  maxTokens: number
+  responseJsonObject?: boolean
+}): Promise<string> {
+  const apiKey = xaiApiKey()
+  if (!apiKey) {
+    throw new Error('XAI_API_KEY or GROK_API_KEY is required when LLM_PROVIDER=grok')
+  }
+
+  return openAiCompatibleChatCompletion({
+    baseUrl: config.GROK_API_BASE,
+    apiKey,
+    providerLabel: 'Grok (xAI)',
+    model: args.model,
+    messages: args.messages,
+    maxTokens: args.maxTokens,
+    responseJsonObject: args.responseJsonObject,
+  })
+}
+
+/**
+ * Groq via OpenAI-compatible API.
+ * @see https://console.groq.com/docs/openai
+ */
+async function groqChatCompletion(args: {
+  model: string
+  messages: OpenAiStyleMessage[]
+  maxTokens: number
+  responseJsonObject?: boolean
+}): Promise<string> {
+  const apiKey = (config.GROQ_API_KEY || '').trim()
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY is required when LLM_PROVIDER=groq')
+  }
+
+  return openAiCompatibleChatCompletion({
+    baseUrl: config.GROQ_API_BASE,
+    apiKey,
+    providerLabel: 'Groq',
+    model: args.model,
+    messages: args.messages,
+    maxTokens: args.maxTokens,
+    responseJsonObject: args.responseJsonObject,
+  })
+}
+
 export async function generateUserPromptText(args: {
   purpose: 'plan' | 'content' | 'explain'
   prompt: string
@@ -124,6 +239,36 @@ export async function generateUserPromptText(args: {
           : config.GEMINI_CONTENT_MODEL
 
     const full = await geminiGenerateText({ model, prompt: args.prompt, maxTokens: args.maxTokens })
+    if (args.onStream) {
+      for (const chunk of chunkText(full, 80)) args.onStream(chunk)
+    }
+    return full
+  }
+
+  if (config.LLM_PROVIDER === 'grok') {
+    const model =
+      args.purpose === 'plan' ? config.GROK_PLAN_MODEL : config.GROK_CONTENT_MODEL
+    const full = await grokChatCompletion({
+      model,
+      messages: [{ role: 'user', content: args.prompt }],
+      maxTokens: args.maxTokens,
+      responseJsonObject: true,
+    })
+    if (args.onStream) {
+      for (const chunk of chunkText(full, 80)) args.onStream(chunk)
+    }
+    return full
+  }
+
+  if (config.LLM_PROVIDER === 'groq') {
+    const model =
+      args.purpose === 'plan' ? config.GROQ_PLAN_MODEL : config.GROQ_CONTENT_MODEL
+    const full = await groqChatCompletion({
+      model,
+      messages: [{ role: 'user', content: args.prompt }],
+      maxTokens: args.maxTokens,
+      responseJsonObject: true,
+    })
     if (args.onStream) {
       for (const chunk of chunkText(full, 80)) args.onStream(chunk)
     }
@@ -170,6 +315,46 @@ export async function generateAskText(args: {
       systemPrompt: args.systemPrompt,
       messages: args.messages,
       maxTokens: args.maxTokens,
+    })
+    if (args.onStream) {
+      for (const chunk of chunkText(full, 80)) args.onStream(chunk)
+    }
+    return full
+  }
+
+  if (config.LLM_PROVIDER === 'grok') {
+    const messages: OpenAiStyleMessage[] = [
+      { role: 'system', content: args.systemPrompt },
+      ...args.messages.slice(-6).map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    ]
+    const full = await grokChatCompletion({
+      model: config.GROK_ASK_MODEL,
+      messages,
+      maxTokens: args.maxTokens,
+      responseJsonObject: false,
+    })
+    if (args.onStream) {
+      for (const chunk of chunkText(full, 80)) args.onStream(chunk)
+    }
+    return full
+  }
+
+  if (config.LLM_PROVIDER === 'groq') {
+    const messages: OpenAiStyleMessage[] = [
+      { role: 'system', content: args.systemPrompt },
+      ...args.messages.slice(-6).map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    ]
+    const full = await groqChatCompletion({
+      model: config.GROQ_ASK_MODEL,
+      messages,
+      maxTokens: args.maxTokens,
+      responseJsonObject: false,
     })
     if (args.onStream) {
       for (const chunk of chunkText(full, 80)) args.onStream(chunk)

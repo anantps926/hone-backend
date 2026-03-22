@@ -5,11 +5,15 @@
     "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": "./src",
+    "baseUrl": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "@prisma/client": ["./node_modules/.prisma/client/index"]
+    }
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "tests", "prisma.config.ts"]
