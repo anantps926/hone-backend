@@ -8,7 +8,10 @@ export default defineConfig({
   migrations: {
     path: "prisma/migrations",
   },
+  // Prisma 7: CLI uses this URL for migrate / introspect. Prefer DIRECT_URL (direct
+  // Postgres) because transaction pooler (pgbouncer) does not support all migration
+  // features. App runtime still uses DATABASE_URL (pooler) in src/db.ts.
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });
