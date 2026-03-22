@@ -1,9 +1,7 @@
 import { ErrorRequestHandler } from 'express'
-import pino from 'pino'
-
-const log = pino()
+import { logger } from '../logger'
 
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
-  log.error({ err, path: _req.path }, 'Unhandled error')
+  logger.error({ err, path: _req.path }, 'Unhandled error')
   res.status(500).json({ error: 'Internal server error' })
 }

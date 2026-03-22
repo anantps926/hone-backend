@@ -1,6 +1,7 @@
-import express from 'express'
+import express, { type Request } from 'express'
 import cors from 'cors'
 import { pinoHttp } from 'pino-http'
+import { logger } from './logger'
 import { clerk } from './middleware/auth'
 import { errorHandler } from './middleware/errorHandler'
 import planRouter from './routes/plan'
@@ -15,10 +16,19 @@ import userRouter from './routes/user'
 
 export function createApp() {
   const app = express()
+  app.set('trust proxy', 1)
 
   app.use(cors({ origin: true, credentials: true }))
   app.use(express.json({ limit: '1mb' }))
-  app.use(pinoHttp())
+  app.use(
+    pinoHttp({
+      logger,
+      autoLogging: {
+        ignore: (req: Request) =>
+          req.url === '/favicon.ico',
+      },
+    }),
+  )
   app.use(clerk)
 
   app.get('/health', (_req, res) => res.json({ status: 'ok' }))

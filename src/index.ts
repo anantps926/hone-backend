@@ -1,30 +1,31 @@
 import { createApp } from './app'
 import { config } from './config'
 import { db } from './db'
+import { logger } from './logger'
 import { redis } from './redis'
 
 async function main() {
   try {
     await redis.connect()
-    console.log('Redis connected')
+    logger.info('Redis connected')
   } catch (err) {
-    console.warn('Redis unavailable; starting without cache.', err)
+    logger.warn({ err }, 'Redis unavailable; starting without cache.')
   }
 
   try {
     await db.$connect()
-    console.log('Database connected')
+    logger.info('Database connected')
   } catch (error) {
-    console.warn('Error connecting to database:', error)
+    logger.warn({ err: error }, 'Error connecting to database')
   }
 
   const app = createApp()
   app.listen(config.PORT, () => {
-    console.log(`Hone backend running on port ${config.PORT}`)
+    logger.info({ port: config.PORT }, 'Hone backend listening')
   })
 }
 
 main().catch((err) => {
-  console.error('Fatal startup error:', err)
+  logger.fatal({ err }, 'Fatal startup error')
   process.exit(1)
 })
